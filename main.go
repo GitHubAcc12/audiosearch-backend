@@ -20,7 +20,7 @@ import (
 
 func main () {
 	r := gin.Default()
-	r.GET("/ping", searchAudioTimestamps)
+	r.GET("/search", searchAudioTimestamps)
 	r.GET("/status", statusGET)
 	r.Run()
 }
