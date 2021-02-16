@@ -20,7 +20,7 @@ import (
 
 func main () {
 	r := gin.Default()
-	r.GET("/search", searchAudioTimestamps)
+	r.GET("/search", searchAudioTimestamps) // TODO: change to POST
 	r.GET("/status", statusGET)
 	r.Run()
 }
