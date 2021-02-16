@@ -9,7 +9,9 @@ import (
 	"log"
 	"os"
 	"os/exec"
-	"strconv"
+	"strings"
+	"encoding/json"
+	"backend/response"
 
 	speech "cloud.google.com/go/speech/apiv1"
 	speechpb "google.golang.org/genproto/googleapis/cloud/speech/v1"
@@ -19,6 +21,10 @@ func main () {
 	r := gin.Default()
 	r.GET("/ping", processGET)
 	r.Run()
+}
+
+func arrayToString(a []int64, delim string) string {
+    return strings.Trim(strings.Replace(fmt.Sprint(a), " ", delim, -1), "[]")
 }
 
 func getCommandAudioFromVideofile(inputFile string) *exec.Cmd{
@@ -52,8 +58,24 @@ func processGET(c *gin.Context) {
 		log.Fatal(err)
 	}
 
+	// jsonTimeStamps, err := json.Marshal(timeStamps)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	resultToSend := response.Response {
+		TimeStamps: timeStamps,
+	}
+
+	jsonResult, err := json.Marshal(resultToSend)
+		
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	c.JSON(200, gin.H{
-		"message": timeStamps[0],
+		"message": string(jsonResult),
 	})
 }
 
@@ -61,7 +83,7 @@ func findWordTimestamp(wordToFind string, audioContent *speechpb.SpeechRecogniti
 	results := make([]int64, 0)
 	// Think of smart way to reduce words here
 	for _, word := range audioContent.Words {
-		if word.Word == wordToFind {
+		if strings.Contains(word.Word, wordToFind) {
 			results = append(results, word.StartTime.Seconds)
 		}
 	}
