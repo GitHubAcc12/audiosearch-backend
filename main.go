@@ -20,7 +20,8 @@ import (
 
 func main () {
 	r := gin.Default()
-	r.GET("/ping", processGET)
+	r.GET("/ping", searchAudioTimestamps)
+	r.GET("/status", statusGET)
 	r.Run()
 }
 
@@ -59,35 +60,68 @@ func downloadFile(filepath string, url string) error {
 	return err
 }
 
-func processGET(c *gin.Context) {
-	fileLocation := "./files/"
-	vidFileLocation := fileLocation + "videofile.mp4"
-	audFileLocation := fileLocation + "audio.wav"
-
-	fileUrl := c.Request.Header["Url"][0]
-	lookingFor := c.Request.Header["Lookingfor"][0]
-	log.Print("Filelocation: " + fileLocation)
-
+func getNewSpeechClient() *speech.Client {
 	// Create google cloud client
 	ctx := context.Background()
 	client, err := speech.NewClient(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
+	return client
+}
+
+func searchAudioTimestamps(c *gin.Context) {
+	fileLocation := "./files/"
+	vidFileLocation := fileLocation + "videofile.mp4"
+	audFileLocation := fileLocation + "audio.wav"
+
+	fileUrl := c.Request.Header["Url"][0]
+	// lookingFor := c.Request.Header["Lookingfor"][0]
+	log.Print("Filelocation: " + fileLocation)
+
+	client := getNewSpeechClient()
+
 
 	// Download video file from given URL
-	err = downloadFile(vidFileLocation, fileUrl)
+	err := downloadFile(vidFileLocation, fileUrl)
 
 	cmd := getCommandAudioFromVideofile(vidFileLocation)
 	cmd.Run()
 
-	result, err := sendRequest(os.Stdout, client, audFileLocation)
-
-	timeStamps := findWordTimestamp(lookingFor, result)
+	result, err := sendLongRunningRequest(os.Stdout, client, audFileLocation)
 
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// Test whether operation can be marshaled
+	//jsonOp, _ := json.Marshal(result)
+	log.Print(result.Name())
+	//end test
+
+
+	resultToSend := response.Response{
+		TimeStamps: []int64{},
+		OperationName: result.Name(),
+		Response: nil,
+	}
+
+	jsonResult, err := json.Marshal(resultToSend)
+		
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	c.JSON(200, gin.H{
+		"message": string(jsonResult),
+	})
+
+	client.Close()
+
+	/*
+	timeStamps := findWordTimestamp(lookingFor, result)
+
+
 
 	// jsonTimeStamps, err := json.Marshal(timeStamps)
 
@@ -104,10 +138,8 @@ func processGET(c *gin.Context) {
 	if err != nil {
 		log.Fatal(err)
 	}
+	*/
 
-	c.JSON(200, gin.H{
-		"message": string(jsonResult),
-	})
 }
 
 func findWordTimestamp(wordToFind string, audioContent *speechpb.SpeechRecognitionAlternative) []int64 {
@@ -121,7 +153,48 @@ func findWordTimestamp(wordToFind string, audioContent *speechpb.SpeechRecogniti
 	return results
 }
 
-func sendRequest(w io.Writer, client *speech.Client, filename string) (*speechpb.SpeechRecognitionAlternative, error) {
+func statusGET(c *gin.Context) {
+	operationName := c.Request.Header["Operationname"][0]
+	client := getNewSpeechClient()
+	resp, err := pollOperation(client, operationName)
+
+	respJson, err := json.Marshal(resp)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	log.Print("Response JSON: " + string(respJson))
+
+	c.JSON(200, gin.H{
+		"message": string(respJson),
+	})
+
+	client.Close()
+}
+
+
+
+func pollOperation(client *speech.Client, operationName string) (*speechpb.LongRunningRecognizeResponse, error) {
+	ctx := context.Background()
+	op := client.LongRunningRecognizeOperation(operationName)
+	resp, err := op.Poll(ctx)
+
+
+	// Test json
+	respJson, err := json.Marshal(resp)
+
+	if err != nil {
+		return nil, err
+	}
+
+	log.Print(string(respJson))
+	// end test
+
+	return resp, err
+}
+
+func sendLongRunningRequest(w io.Writer, client *speech.Client, filename string) (*speech.LongRunningRecognizeOperation, error) {
 	ctx := context.Background()
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -142,10 +215,15 @@ func sendRequest(w io.Writer, client *speech.Client, filename string) (*speechpb
 	}
 
 	op, err := client.LongRunningRecognize(ctx, req)
-	if err != nil {
-		return nil, err
-	}
 
+	// Test op return
+	// jsonOp, _ := json.Marshal(op)
+	log.Print(op.Name())
+	// end test
+
+	return op, err
+
+	/*
 	// Here is where progress bar might be good?
 	resp, err := op.Wait(ctx)
 	if err != nil {
@@ -159,4 +237,5 @@ func sendRequest(w io.Writer, client *speech.Client, filename string) (*speechpb
 		}
 	}
 	return resp.Results[0].Alternatives[0], nil
+	*/
 }
