@@ -12,6 +12,7 @@ import (
 	"strings"
 	"encoding/json"
 	"backend/response"
+	"net/http"
 
 	speech "cloud.google.com/go/speech/apiv1"
 	speechpb "google.golang.org/genproto/googleapis/cloud/speech/v1"
@@ -37,20 +38,50 @@ func getCommandAudioFromVideofile(inputFile string) *exec.Cmd{
 	"-vn", "./files/audio.wav")
 }
 
+func downloadFile(filepath string, url string) error {
+	resp, err := http.Get(url)
+	
+	if err != nil {
+		return err
+	}
+
+	defer resp.Body.Close()
+
+	out, err := os.Create(filepath)
+
+	if err != nil {
+		return err
+	}
+
+	defer out.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	return err
+}
+
 func processGET(c *gin.Context) {
-	fileLocation := c.Request.Header["Filename"][0]
+	fileLocation := "./files/"
+	vidFileLocation := fileLocation + "videofile.mp4"
+	audFileLocation := fileLocation + "audio.wav"
+
+	fileUrl := c.Request.Header["Url"][0]
 	lookingFor := c.Request.Header["Lookingfor"][0]
 	log.Print("Filelocation: " + fileLocation)
+
+	// Create google cloud client
 	ctx := context.Background()
 	client, err := speech.NewClient(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	cmd := getCommandAudioFromVideofile(fileLocation)
+	// Download video file from given URL
+	err = downloadFile(vidFileLocation, fileUrl)
+
+	cmd := getCommandAudioFromVideofile(vidFileLocation)
 	cmd.Run()
 
-	result, err := sendRequest(os.Stdout, client, "./files/audio.wav")
+	result, err := sendRequest(os.Stdout, client, audFileLocation)
 
 	timeStamps := findWordTimestamp(lookingFor, result)
 
