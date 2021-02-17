@@ -21,8 +21,9 @@ import (
 
 func main () {
 	r := gin.Default()
-	r.POST("/search", searchAudioTimestamps)
+	r.POST("/search", searchAudioTimestampsPOST)
 	r.GET("/status", statusGET)
+	r.GET("/load", loadFileGET)
 	r.Run()
 }
 
@@ -30,35 +31,38 @@ func arrayToString(a []int64, delim string) string {
     return strings.Trim(strings.Replace(fmt.Sprint(a), " ", delim, -1), "[]")
 }
 
-func getCommandAudioFromVideofile(inputFile string) *exec.Cmd{
+func getCommandAudioFromVideofile(inputFile string, outputFile string) *exec.Cmd{
 	//'ffmpeg -i {video_name} -ab 160k -ac 2 -ar 44100 -vn audio.wav'
 	return exec.Command("ffmpeg",
 	"-i", inputFile,
 	"-ab", "160k",
 	"-ac", "2",
 	"-ar", "44100",
-	"-vn", "./files/audio.wav")
+	"-vn", outputFile)
 }
 
-func downloadFile(filepath string, url string) error {
-	resp, err := http.Get(url)
+func downloadFile(fileUrl string, filePath string) {
+	resp, err := http.Get(fileUrl)
 	
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
 
 	defer resp.Body.Close()
 
-	out, err := os.Create(filepath)
+	out, err := os.Create(filePath)
 
 	if err != nil {
-		return err
+		log.Fatal(err)
 	}
 
 	defer out.Close()
 
 	_, err = io.Copy(out, resp.Body)
-	return err
+	
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func getNewSpeechClient() *speech.Client {
@@ -71,11 +75,41 @@ func getNewSpeechClient() *speech.Client {
 	return client
 }
 
-func searchAudioTimestamps(c *gin.Context) {
-	fileLocation := "./files/"
-	vidFileLocation := fileLocation + "videofile.mp4"
-	audFileLocation := fileLocation + "audio.wav"
+func loadFileAndExtractAudio(fileUrl string, vidFileName string, audFileName string) {
+	downloadFile(fileUrl, vidFileName)
+	cmd := getCommandAudioFromVideofile(vidFileName, audFileName)
+	cmd.Run()
+}
 
+func loadFileGET(c *gin.Context) {
+	fileLocation := "./files/"
+	fileUrl := c.Request.Header["Url"][0]
+	fileUri := c.Request.Header["Uri"][0]
+
+	vidFileLocation := fileLocation + fileUri + ".mp4"
+	audFileLocation := fileLocation + fileUri + ".wav"
+
+
+	go loadFileAndExtractAudio(fileUrl, vidFileLocation, audFileLocation)
+
+	resultToSend := response.Response{
+		TimeStamps: []int64{},
+		OperationName: "",
+		Response: "Download initiated",
+	}
+
+	jsonResult, err := json.Marshal(resultToSend)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	c.String(200, string(jsonResult))
+}
+
+
+
+func searchAudioTimestampsPOST(c *gin.Context) {
 
 	var request response.REQUEST
 	c.BindJSON(&request)
@@ -85,25 +119,17 @@ func searchAudioTimestamps(c *gin.Context) {
 
 	client := getNewSpeechClient()
 
-
-	// Download video file from given URL
-	err := downloadFile(vidFileLocation, fileUrl)
-
-	cmd := getCommandAudioFromVideofile(vidFileLocation)
-	cmd.Run()
-
-	result, err := sendLongRunningRequest(os.Stdout, client, audFileLocation)
+	result, err := sendLongRunningRequest(os.Stdout, client, fileUrl)
 
 	if err != nil {
 		log.Print("Error from sendlongrunningrequest")
 		log.Fatal(err)
 	}
 
-
 	resultToSend := response.Response{
 		TimeStamps: []int64{},
 		OperationName: result.Name(),
-		Response: nil,
+		Response: "",
 	}
 
 	jsonResult, err := json.Marshal(resultToSend)
@@ -111,40 +137,10 @@ func searchAudioTimestamps(c *gin.Context) {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	//stringResult/*, err2*/ := string(resultToSend)
-	//log.Print(stringResult)
-	/*if err2 != nil {
-		log.Print("err2")
-		log.Print(string(jsonResult))
-		log.Fatal(err2)
-	}*/
 
 	c.String(200, string(jsonResult))
 
 	client.Close()
-
-	/*
-	timeStamps := findWordTimestamp(lookingFor, result)
-
-
-
-	// jsonTimeStamps, err := json.Marshal(timeStamps)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	resultToSend := response.Response {
-		TimeStamps: timeStamps,
-	}
-
-	jsonResult, err := json.Marshal(resultToSend)
-		
-	if err != nil {
-		log.Fatal(err)
-	}
-	*/
 
 }
 
