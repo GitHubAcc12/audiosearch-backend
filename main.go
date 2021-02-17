@@ -112,17 +112,15 @@ func searchAudioTimestamps(c *gin.Context) {
 		log.Fatal(err)
 	}
 
-	stringResult/*, err2*/ := string(resultToSend)
-	log.Print(stringResult)
+	//stringResult/*, err2*/ := string(resultToSend)
+	//log.Print(stringResult)
 	/*if err2 != nil {
 		log.Print("err2")
 		log.Print(string(jsonResult))
 		log.Fatal(err2)
 	}*/
 
-	c.JSON(200, gin.H{
-		"message": stringResult,
-	})
+	c.String(200, string(jsonResult))
 
 	client.Close()
 
@@ -172,15 +170,7 @@ func statusGET(c *gin.Context) {
 		log.Fatal(err)
 	}
 
-	respString/*, err2 */ := string(respJson)
-
-	/*if err2 != nil {
-		log.Fatal(err)
-	}*/
-
-	c.JSON(200, gin.H{
-		"message": respString,
-	})
+	c.String(200, string(respJson))
 
 	client.Close()
 }
