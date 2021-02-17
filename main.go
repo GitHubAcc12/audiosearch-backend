@@ -79,7 +79,9 @@ func getNewSpeechClient() *speech.Client {
 }
 
 func loadFileAndExtractAudio(fileUrl string, vidFileName string, audFileName string) {
+	log.Print("Starting to download file " + vidFileName)
 	downloadFile(fileUrl, vidFileName)
+	log.Print("Download finished.")
 	cmd := getCommandAudioFromVideofile(vidFileName, audFileName)
 	cmd.Run()
 }
@@ -143,11 +145,11 @@ func searchAudioTimestampsPOST(c *gin.Context) {
 	c.BindJSON(&request)
 	
 
-	fileUrl := request.URL
+	fileUri := constants.FILES_FOLDER_PATH + request.URI + ".wav"
 
 	client := getNewSpeechClient()
 
-	result, err := sendLongRunningRequest(os.Stdout, client, fileUrl)
+	result, err := sendLongRunningRequest(os.Stdout, client, fileUri)
 
 	if err != nil {
 		log.Print("Error from sendlongrunningrequest")
@@ -232,19 +234,4 @@ func sendLongRunningRequest(w io.Writer, client *speech.Client, filename string)
 
 	return op, err
 
-	/*
-	// Here is where progress bar might be good?
-	resp, err := op.Wait(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	for _, result := range resp.Results {
-		log.Print("in result loop")
-		for _, alt := range result.Alternatives {
-			fmt.Fprintf(w, "\"%v\" (confidence=%3f)\n", alt.Transcript, alt.Confidence)
-		}
-	}
-	return resp.Results[0].Alternatives[0], nil
-	*/
 }
