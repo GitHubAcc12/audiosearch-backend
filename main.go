@@ -12,7 +12,9 @@ import (
 	"strings"
 	"encoding/json"
 	"backend/response"
+	"backend/constants"
 	"net/http"
+
 	//"strconv"
 
 	speech "cloud.google.com/go/speech/apiv1"
@@ -24,6 +26,7 @@ func main () {
 	r.POST("/search", searchAudioTimestampsPOST)
 	r.GET("/status", statusGET)
 	r.GET("/load", loadFileGET)
+	r.GET("/check", checkFileGET)
 	r.Run()
 }
 
@@ -59,7 +62,7 @@ func downloadFile(fileUrl string, filePath string) {
 	defer out.Close()
 
 	_, err = io.Copy(out, resp.Body)
-	
+
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -82,12 +85,12 @@ func loadFileAndExtractAudio(fileUrl string, vidFileName string, audFileName str
 }
 
 func loadFileGET(c *gin.Context) {
-	fileLocation := "./files/"
+	
 	fileUrl := c.Request.Header["Url"][0]
 	fileUri := c.Request.Header["Uri"][0]
 
-	vidFileLocation := fileLocation + fileUri + ".mp4"
-	audFileLocation := fileLocation + fileUri + ".wav"
+	vidFileLocation := constants.FILES_FOLDER_PATH + fileUri + ".mp4"
+	audFileLocation := constants.FILES_FOLDER_PATH + fileUri + ".wav"
 
 
 	go loadFileAndExtractAudio(fileUrl, vidFileLocation, audFileLocation)
@@ -107,7 +110,32 @@ func loadFileGET(c *gin.Context) {
 	c.String(200, string(jsonResult))
 }
 
+func checkFileGET(c *gin.Context) {
+	fileUri := c.Request.Header["Fileuri"][0]
+	fileName := constants.FILES_FOLDER_PATH + fileUri + ".wav"
+	status := "false"
+	if _, err := os.Stat(fileName); err == nil {
+		status = "true" // File exists
+	} else if os.IsNotExist(err) {
+		status = "false" // File doesn't exist
+	} else {
+		log.Fatal(err) // Both possible, something went wrong
+	}
 
+	resp := response.Response{
+		TimeStamps: []int64{},
+		OperationName: "",
+		Response: status,
+	}
+
+	respJson, err := json.Marshal(resp)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	c.String(200, string(respJson))
+}
 
 func searchAudioTimestampsPOST(c *gin.Context) {
 
