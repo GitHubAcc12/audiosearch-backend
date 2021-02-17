@@ -13,6 +13,7 @@ import (
 	"encoding/json"
 	"backend/response"
 	"net/http"
+	//"strconv"
 
 	speech "cloud.google.com/go/speech/apiv1"
 	speechpb "google.golang.org/genproto/googleapis/cloud/speech/v1"
@@ -20,7 +21,7 @@ import (
 
 func main () {
 	r := gin.Default()
-	r.GET("/search", searchAudioTimestamps) // TODO: change to POST
+	r.POST("/search", searchAudioTimestamps)
 	r.GET("/status", statusGET)
 	r.Run()
 }
@@ -75,9 +76,12 @@ func searchAudioTimestamps(c *gin.Context) {
 	vidFileLocation := fileLocation + "videofile.mp4"
 	audFileLocation := fileLocation + "audio.wav"
 
-	fileUrl := c.Request.Header["Url"][0]
-	// lookingFor := c.Request.Header["Lookingfor"][0]
-	log.Print("Filelocation: " + fileLocation)
+
+	var request response.REQUEST
+	c.BindJSON(&request)
+	
+
+	fileUrl := request.URL
 
 	client := getNewSpeechClient()
 
@@ -91,13 +95,9 @@ func searchAudioTimestamps(c *gin.Context) {
 	result, err := sendLongRunningRequest(os.Stdout, client, audFileLocation)
 
 	if err != nil {
+		log.Print("Error from sendlongrunningrequest")
 		log.Fatal(err)
 	}
-
-	// Test whether operation can be marshaled
-	//jsonOp, _ := json.Marshal(result)
-	log.Print(result.Name())
-	//end test
 
 
 	resultToSend := response.Response{
@@ -112,8 +112,16 @@ func searchAudioTimestamps(c *gin.Context) {
 		log.Fatal(err)
 	}
 
+	stringResult/*, err2*/ := string(resultToSend)
+	log.Print(stringResult)
+	/*if err2 != nil {
+		log.Print("err2")
+		log.Print(string(jsonResult))
+		log.Fatal(err2)
+	}*/
+
 	c.JSON(200, gin.H{
-		"message": string(jsonResult),
+		"message": stringResult,
 	})
 
 	client.Close()
@@ -164,10 +172,14 @@ func statusGET(c *gin.Context) {
 		log.Fatal(err)
 	}
 
-	log.Print("Response JSON: " + string(respJson))
+	respString/*, err2 */ := string(respJson)
+
+	/*if err2 != nil {
+		log.Fatal(err)
+	}*/
 
 	c.JSON(200, gin.H{
-		"message": string(respJson),
+		"message": respString,
 	})
 
 	client.Close()
@@ -179,18 +191,6 @@ func pollOperation(client *speech.Client, operationName string) (*speechpb.LongR
 	ctx := context.Background()
 	op := client.LongRunningRecognizeOperation(operationName)
 	resp, err := op.Poll(ctx)
-
-
-	// Test json
-	respJson, err := json.Marshal(resp)
-
-	if err != nil {
-		return nil, err
-	}
-
-	log.Print(string(respJson))
-	// end test
-
 	return resp, err
 }
 
@@ -215,11 +215,6 @@ func sendLongRunningRequest(w io.Writer, client *speech.Client, filename string)
 	}
 
 	op, err := client.LongRunningRecognize(ctx, req)
-
-	// Test op return
-	// jsonOp, _ := json.Marshal(op)
-	log.Print(op.Name())
-	// end test
 
 	return op, err
 
