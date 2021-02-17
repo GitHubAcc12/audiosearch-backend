@@ -2,6 +2,6 @@ package response
 
 type Response struct {
 	TimeStamps		[]int64
-	OperationName	string
+	OperationNames	[]string
 	Response		string
 }

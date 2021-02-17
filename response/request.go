@@ -1,6 +1,6 @@
 package response
 
 type REQUEST struct {
-	URI				string `json:"url" binding:"required"` 
+	URI				string `json:"uri" binding:"required"` 
 	LOOKING_FOR		string `json:"lookingfor" binding:"required"`
 }
