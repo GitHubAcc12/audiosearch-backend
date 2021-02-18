@@ -117,7 +117,7 @@ func loadFileGET(c *gin.Context) {
 
 	resultToSend := response.Response{
 		TimeStamps: []int64{},
-		Response: nil,
+		OperationName: "",
 		Message: "Download initiated",
 		Index: -1,
 	}
@@ -146,7 +146,7 @@ func checkFileGET(c *gin.Context) {
 	resp := response.Response{
 		TimeStamps: []int64{},
 		Message: status,
-		Response: nil,
+		OperationName: "",
 		Index: -1,
 	}
 
@@ -223,7 +223,7 @@ func searchAudioTimestampsPOST(c *gin.Context) {
 			resp := response.Response{
 				TimeStamps: []int64{},
 				Message: "",
-				Response: result,
+				OperationName: result.Name(),
 				Index: fileIndex,
 			}
 			operationResults <- resp
@@ -302,14 +302,14 @@ func pollOperation(client *speech.Client, operationName string) (*speechpb.LongR
 	return resp, err
 }
 
-func sendLongRunningRequest(w io.Writer, client *speech.Client, filename string) (*speechpb.RecognizeResponse, error) {
+func sendLongRunningRequest(w io.Writer, client *speech.Client, filename string) (*speech.LongRunningRecognizeOperation, error) {
 	ctx := context.Background()
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
 
-	req := &speechpb.RecognizeRequest {
+	req := &speechpb.LongRunningRecognizeRequest {
 		Config: &speechpb.RecognitionConfig {
 			Encoding:			speechpb.RecognitionConfig_LINEAR16,
 			SampleRateHertz:	44100,
@@ -322,7 +322,7 @@ func sendLongRunningRequest(w io.Writer, client *speech.Client, filename string)
 		},
 	}
 
-	op, err := client.Recognize(ctx, req)
+	op, err := client.LongRunningRecognize(ctx, req)
 
 	return op, err
 
