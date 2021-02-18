@@ -8,7 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"os/exec"
+	//"os/exec"
 	"strings"
 	"encoding/json"
 	"net/http"
@@ -19,12 +19,18 @@ import (
 	"backend/response"
 	"backend/constants"
 	"backend/tools"
+	"backend/worker"
 
+	// uuid "github.com/google/uuid"
 	speech "cloud.google.com/go/speech/apiv1"
 	speechpb "google.golang.org/genproto/googleapis/cloud/speech/v1"
 )
 
+var workerMap map[string]worker.Worker
+
 func main () {
+	workerMap = make(map[string]worker.Worker)
+	// TODO workers will have to be deleted eventually
 	r := gin.Default()
 	r.POST("/search", searchAudioTimestampsPOST)
 	r.GET("/status", statusGET)
@@ -37,26 +43,7 @@ func arrayToString(a []int64, delim string) string {
     return strings.Trim(strings.Replace(fmt.Sprint(a), " ", delim, -1), "[]")
 }
 
-func getCommandAudioFromVideofile(inputFile string, outputFile string) *exec.Cmd{
-	// ffmpeg -i {video_name} -ab 160k -ac 2 -ar 44100 -vn audio.wav
-	return exec.Command("ffmpeg",
-	"-i", inputFile,
-	"-ab", "160k",
-	"-ac", "2",
-	"-ar", "44100",
-	"-vn", outputFile)
-}
 
-func getCommandSplitAudio(inputFile string, outputPath string) *exec.Cmd {
-	// ffmpeg -i precalcday1.wav -f segment -segment_time 600 -c copy out%03d.wav
-	// Segment audio file into 5 minute long pieces
-	return exec.Command("ffmpeg",
-	"-i", inputFile+".wav",
-	"-f", "segment",
-	"-segment_time", "55",
-	"-c", "copy",
-	outputPath+"%03d.wav")
-}
 
 func downloadFile(fileUrl string, filePath string) {
 	resp, err := http.Get(fileUrl)
@@ -92,7 +79,7 @@ func getNewSpeechClient() *speech.Client {
 	return client
 }
 
-func loadFileAndExtractAudio(fileUrl string, vidFileName string, audFileName string) {
+/*func loadFileAndExtractAudio(fileUrl string, vidFileName string, audFileName string) {
 	log.Print("Starting to download file " + vidFileName)
 	downloadFile(fileUrl, vidFileName)
 	log.Print("Download finished.")
@@ -102,24 +89,40 @@ func loadFileAndExtractAudio(fileUrl string, vidFileName string, audFileName str
 		log.Print("Error converting to wav file:")
 		log.Fatal(err)
 	}
-}
+}*/
 
 func loadFileGET(c *gin.Context) {
+
+	var reqWorker worker.Worker
+	if c.Request.Header["Workerid"] == nil {
+		fileUrl := c.Request.Header["Url"][0]
+		fileUri := c.Request.Header["Uri"][0]
+		reqWorker = worker.NewWorker(fileUri, fileUrl)
+		workerMap[reqWorker.Id()] = reqWorker
+	} else {
+		reqWorker = workerMap[c.Request.Header["Workerid"][0]]
+	}
 	
-	fileUrl := c.Request.Header["Url"][0]
-	fileUri := c.Request.Header["Uri"][0]
+	
 
-	vidFileLocation := "./"+constants.FILES_FOLDER_PATH + fileUri + ".mp4"
-	audFileLocation := "./"+constants.FILES_FOLDER_PATH + fileUri + ".wav"
+	
+	vidFileLocation := filepath.FromSlash("./"+constants.FILES_FOLDER_PATH + reqWorker.FileUri + ".mp4")
+	audFileLocation := filepath.FromSlash("./"+constants.FILES_FOLDER_PATH + reqWorker.FileUri + ".wav")
 
-
+	/*
 	go loadFileAndExtractAudio(fileUrl, vidFileLocation, audFileLocation)
+
+	*/
+
+	reqWorker.DownloadAndExtractAudioConcurrent(vidFileLocation, audFileLocation)
+
 
 	resultToSend := response.Response{
 		TimeStamps: []int64{},
-		OperationName: "",
+		Response: nil,
 		Message: "Download initiated",
 		Index: -1,
+		WorkerId: reqWorker.Id(),
 	}
 
 	jsonResult, err := json.Marshal(resultToSend)
@@ -146,8 +149,9 @@ func checkFileGET(c *gin.Context) {
 	resp := response.Response{
 		TimeStamps: []int64{},
 		Message: status,
-		OperationName: "",
+		Response: nil,
 		Index: -1,
+		WorkerId: "", // Getting there
 	}
 
 	respJson, err := json.Marshal(resp)
@@ -168,6 +172,7 @@ func searchAudioTimestampsPOST(c *gin.Context) {
 		log.Fatal(err)
 	}
 
+	/*
 	fileUri := "./"+constants.FILES_FOLDER_PATH + request.URI + ".wav"
 
 	outputFilePath := "./"+constants.FILES_FOLDER_PATH+request.URI+"/"
@@ -184,7 +189,7 @@ func searchAudioTimestampsPOST(c *gin.Context) {
 	if err != nil || err2 != nil{
 		log.Fatal(err)
 		log.Fatal(err2)
-	}
+	}*/
 
 
 	files, err := ioutil.ReadDir(filepath.FromSlash("./"+constants.FILES_FOLDER_PATH+request.URI))
@@ -214,7 +219,7 @@ func searchAudioTimestampsPOST(c *gin.Context) {
 			defer waitGroup.Done()
 			// Do I need a new client every time to make it fast?
 			log.Print("In goroutine! Fileuri: " + fileUri)
-			result, err := sendLongRunningRequest(os.Stdout, client, fileUri)
+			_, err := sendLongRunningRequest(os.Stdout, client, fileUri) // Getting there!!!
 			if err != nil {
 				log.Fatal(err)
 			}
@@ -223,7 +228,7 @@ func searchAudioTimestampsPOST(c *gin.Context) {
 			resp := response.Response{
 				TimeStamps: []int64{},
 				Message: "",
-				OperationName: result.Name(),
+				Response: nil, // Getting there
 				Index: fileIndex,
 			}
 			operationResults <- resp
