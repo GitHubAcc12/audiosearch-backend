@@ -3,26 +3,26 @@ package main
 import (
 	"github.com/gin-gonic/gin"
 	"context"
-	"fmt"
-	"io"
-	"io/ioutil"
+	//"fmt"
+	//"io"
+	//"io/ioutil"
 	"log"
 	"os"
 	//"os/exec"
 	"strings"
 	"encoding/json"
-	"net/http"
-	"sync"
-	"strconv"
+	//"net/http"
+	//"sync"
+	//"strconv"
 	"path/filepath"
 
 	"backend/response"
 	"backend/constants"
-	"backend/tools"
+	//"backend/tools"
 	"backend/worker"
 
 	// uuid "github.com/google/uuid"
-	speech "cloud.google.com/go/speech/apiv1"
+	//speech "cloud.google.com/go/speech/apiv1"
 	speechpb "google.golang.org/genproto/googleapis/cloud/speech/v1"
 )
 
@@ -33,12 +33,14 @@ func main () {
 	// TODO workers will have to be deleted eventually
 	r := gin.Default()
 	r.POST("/search", searchAudioTimestampsPOST)
-	r.GET("/status", statusGET)
+	//r.GET("/status", statusGET)
 	r.GET("/load", loadFileGET)
 	r.GET("/check", checkFileGET)
 	r.Run()
 }
 
+
+/*
 func arrayToString(a []int64, delim string) string {
     return strings.Trim(strings.Replace(fmt.Sprint(a), " ", delim, -1), "[]")
 }
@@ -79,7 +81,7 @@ func getNewSpeechClient() *speech.Client {
 	return client
 }
 
-/*func loadFileAndExtractAudio(fileUrl string, vidFileName string, audFileName string) {
+func loadFileAndExtractAudio(fileUrl string, vidFileName string, audFileName string) {
 	log.Print("Starting to download file " + vidFileName)
 	downloadFile(fileUrl, vidFileName)
 	log.Print("Download finished.")
@@ -103,7 +105,7 @@ func loadFileGET(c *gin.Context) {
 		reqWorker = workerMap[c.Request.Header["Workerid"][0]]
 	}
 	
-	
+	log.Print("Worker Uri after creation: " + reqWorker.FileUri)
 
 	
 	vidFileLocation := filepath.FromSlash("./"+constants.FILES_FOLDER_PATH + reqWorker.FileUri + ".mp4")
@@ -166,13 +168,50 @@ func checkFileGET(c *gin.Context) {
 func searchAudioTimestampsPOST(c *gin.Context) {
 	var request response.REQUEST
 	c.BindJSON(&request)
-	
+
+	var reqWorker worker.Worker
+
+	if len(request.WORKER_ID) == 0 {
+		resp := response.Response{
+			TimeStamps: []int64{},
+			Response: nil,
+			Message: "Operation failed: No video/audio associated",
+			Index: -1,
+			WorkerId: "",
+		}
+
+		jsonResp, err := json.Marshal(resp)
+		if err != nil {
+			log.Print("Error marshaling response, would have failed anyway")
+			log.Print(err)
+		}
+		c.String(404, string(jsonResp))
+		return
+	} else {
+		reqWorker = workerMap[request.WORKER_ID]
+	}
+
+	err1, err2 := reqWorker.DeleteBigFiles()
+
+	if err1 != nil {
+		log.Print("Error deleting mp4 file:")
+		log.Print(err1)
+	}
+	if err2 != nil {
+		log.Print("Error deleting wav file:")
+		log.Print(err2)
+	}
+	log.Print("Worker fileuri: " + reqWorker.FileUri)
+	splitFilePath := filepath.FromSlash("./"+constants.FILES_FOLDER_PATH+reqWorker.FileUri)
+	reqWorker.AnalyzeFiles(context.Background(), splitFilePath)
+
+	/*
 	err := os.MkdirAll("./"+constants.FILES_FOLDER_PATH+request.URI, os.ModePerm)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	/*
+	
 	fileUri := "./"+constants.FILES_FOLDER_PATH + request.URI + ".wav"
 
 	outputFilePath := "./"+constants.FILES_FOLDER_PATH+request.URI+"/"
@@ -189,7 +228,7 @@ func searchAudioTimestampsPOST(c *gin.Context) {
 	if err != nil || err2 != nil{
 		log.Fatal(err)
 		log.Fatal(err2)
-	}*/
+	}
 
 
 	files, err := ioutil.ReadDir(filepath.FromSlash("./"+constants.FILES_FOLDER_PATH+request.URI))
@@ -251,22 +290,23 @@ func searchAudioTimestampsPOST(c *gin.Context) {
 	if err != nil {
 		log.Print("Error from sendlongrunningrequest")
 		log.Fatal(err)
-	}
+	} */
 
 	resultToSend := response.Response{
 		TimeStamps: []int64{},
-		OperationNames: resArray,
-		Response: "",
-	}*/
+		Message: "Speech evaluation initiated",
+		Response: nil,
+		Index: -1,
+		WorkerId: reqWorker.Id(),
+	}
 
-	jsonResult, err := json.Marshal(resArray)
-	log.Print("Marshaled")
+	jsonResult, err := json.Marshal(resultToSend)
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	c.String(200, "{ \"result\": " + string(jsonResult) + " }")
+	c.String(200, string(jsonResult))
 }
 
 
@@ -282,6 +322,7 @@ func findWordTimestamp(wordToFind string, audioContent *speechpb.SpeechRecogniti
 	return results
 }
 
+/*
 func statusGET(c *gin.Context) {
 	operationName := c.Request.Header["Operationname"][0]
 	client := getNewSpeechClient()
@@ -331,4 +372,4 @@ func sendLongRunningRequest(w io.Writer, client *speech.Client, filename string)
 
 	return op, err
 
-}
+}*/

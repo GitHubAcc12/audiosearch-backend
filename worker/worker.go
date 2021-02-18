@@ -158,6 +158,7 @@ func (w Worker) AnalyzeFiles(ctx context.Context, splitFilesFolder string) strin
 }
 
 func (w Worker) analyzeFilesConcurrently(ctx context.Context, splitFilesFolder string) {
+	log.Print("Splitfiledfolder: " + splitFilesFolder)
 	files, err := ioutil.ReadDir(splitFilesFolder)
 
 	if err != nil {
