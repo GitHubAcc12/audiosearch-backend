@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"sync"
 	"strconv"
+	"path/filepath"
 
 	"backend/response"
 	"backend/constants"
@@ -52,7 +53,7 @@ func getCommandSplitAudio(inputFile string, outputPath string) *exec.Cmd {
 	return exec.Command("ffmpeg",
 	"-i", inputFile+".wav",
 	"-f", "segment",
-	"-segment_time", "45",
+	"-segment_time", "55",
 	"-c", "copy",
 	outputPath+"%03d.wav")
 }
@@ -95,8 +96,12 @@ func loadFileAndExtractAudio(fileUrl string, vidFileName string, audFileName str
 	log.Print("Starting to download file " + vidFileName)
 	downloadFile(fileUrl, vidFileName)
 	log.Print("Download finished.")
-	cmd := getCommandAudioFromVideofile(vidFileName, audFileName)
-	cmd.Run()
+	cmd := getCommandAudioFromVideofile(filepath.FromSlash(vidFileName), filepath.FromSlash(audFileName))
+	err := cmd.Run()
+	if err != nil {
+		log.Print("Error converting to wav file:")
+		log.Fatal(err)
+	}
 }
 
 func loadFileGET(c *gin.Context) {
@@ -112,8 +117,9 @@ func loadFileGET(c *gin.Context) {
 
 	resultToSend := response.Response{
 		TimeStamps: []int64{},
-		OperationNames: []string{},
-		Response: "Download initiated",
+		Response: nil,
+		Message: "Download initiated",
+		Index: -1,
 	}
 
 	jsonResult, err := json.Marshal(resultToSend)
@@ -139,8 +145,9 @@ func checkFileGET(c *gin.Context) {
 
 	resp := response.Response{
 		TimeStamps: []int64{},
-		OperationNames: []string{},
-		Response: status,
+		Message: status,
+		Response: nil,
+		Index: -1,
 	}
 
 	respJson, err := json.Marshal(resp)
@@ -180,76 +187,81 @@ func searchAudioTimestampsPOST(c *gin.Context) {
 	}
 
 
-	files, err := ioutil.ReadDir("./"+constants.FILES_FOLDER_PATH+request.URI)
+	files, err := ioutil.ReadDir(filepath.FromSlash("./"+constants.FILES_FOLDER_PATH+request.URI))
 
 	if err != nil {
-		log.Print("Yes its here")
 		log.Fatal(err)
 	}
 	client := getNewSpeechClient()
 
 	var waitGroup sync.WaitGroup
 
-	operationResults := make(chan string, len(files)) 
+	operationResults := make(chan response.Response, len(files)) 
 
 	log.Print("Starting loop")
 	for _, f := range files {
-		if strings.Contains(f.Name(), request.URI) {
-			log.Print("Iteration: " + f.Name())
-			// Save index of file to later add index*5min, or index*300 to the word timestamps
-			fName := strings.TrimSuffix(f.Name(), ".wav")
-			fileIndex, err := strconv.Atoi(fName[len(fName)-3:])
-			
+		log.Print("Iteration: " + f.Name())
+		// Save index of file to later add index*5min, or index*300 to the word timestamps
+		fName := strings.TrimSuffix(f.Name(), ".wav")
+		fileIndex, err := strconv.Atoi(fName)
+		
+		if err != nil {
+			log.Fatal(err)
+		}
+		// Start goroutines to send all the requests to cloud api
+		waitGroup.Add(1)
+		go func(client *speech.Client, fileUri string) {
+			defer waitGroup.Done()
+			// Do I need a new client every time to make it fast?
+			log.Print("In goroutine! Fileuri: " + fileUri)
+			result, err := sendLongRunningRequest(os.Stdout, client, fileUri)
 			if err != nil {
 				log.Fatal(err)
 			}
-
-			// Start goroutines to send all the requests to cloud api
-			waitGroup.Add(1)
-			go func(client *speech.Client, fileUri string) {
-				// Do I need a new client every time to make it fast?
-				log.Print("In goroutine! Fileuri: " + fileUri)
-				result, err := sendLongRunningRequest(os.Stdout, client, fileUri)
-				if err != nil {
-					log.Fatal(err)
-				}
-				// Save names of the operations to check on them later
-				operationResults <- result.Name()+"-"+strconv.Itoa(fileIndex)
-				defer waitGroup.Done()
-			}(client, "./"+constants.FILES_FOLDER_PATH + f.Name())
-
-		}
+			log.Print("Received response from google!")
+			// Save names of the operations to check on them later
+			resp := response.Response{
+				TimeStamps: []int64{},
+				Message: "",
+				Response: result,
+				Index: fileIndex,
+			}
+			operationResults <- resp
+			log.Print("Done with routine " + fileUri)
+		}(client, filepath.FromSlash("./"+constants.FILES_FOLDER_PATH+request.URI + "/" + f.Name()))
 	}
 
+	log.Print("Waiting for waitgroup")
+	
 	waitGroup.Wait() // Wait for all goroutines to finish
+	close(operationResults)
+	log.Print("Waitgroup finished!")
 	client.Close()
 
 	resArray := tools.ToSlice(operationResults)
-	
+	log.Print("Created array")
 
 	/*result, err := sendLongRunningRequest(os.Stdout, client, fileUri)
 
 	if err != nil {
 		log.Print("Error from sendlongrunningrequest")
 		log.Fatal(err)
-	}*/
+	}
 
 	resultToSend := response.Response{
 		TimeStamps: []int64{},
 		OperationNames: resArray,
 		Response: "",
-	}
+	}*/
 
-	jsonResult, err := json.Marshal(resultToSend)
-		
+	jsonResult, err := json.Marshal(resArray)
+	log.Print("Marshaled")
+
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	c.String(200, string(jsonResult))
-
-	
-
+	c.String(200, "{ \"result\": " + string(jsonResult) + " }")
 }
 
 
@@ -290,14 +302,14 @@ func pollOperation(client *speech.Client, operationName string) (*speechpb.LongR
 	return resp, err
 }
 
-func sendLongRunningRequest(w io.Writer, client *speech.Client, filename string) (*speech.LongRunningRecognizeOperation, error) {
+func sendLongRunningRequest(w io.Writer, client *speech.Client, filename string) (*speechpb.RecognizeResponse, error) {
 	ctx := context.Background()
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
 		return nil, err
 	}
 
-	req := &speechpb.LongRunningRecognizeRequest {
+	req := &speechpb.RecognizeRequest {
 		Config: &speechpb.RecognitionConfig {
 			Encoding:			speechpb.RecognitionConfig_LINEAR16,
 			SampleRateHertz:	44100,
@@ -310,7 +322,7 @@ func sendLongRunningRequest(w io.Writer, client *speech.Client, filename string)
 		},
 	}
 
-	op, err := client.LongRunningRecognize(ctx, req)
+	op, err := client.Recognize(ctx, req)
 
 	return op, err
 
