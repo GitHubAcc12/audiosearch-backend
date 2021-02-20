@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"strings"
+	"strconv"
 	"encoding/json"
 	"path/filepath"
 
@@ -23,7 +24,7 @@ func main () {
 	// TODO workers will have to be deleted eventually
 	r := gin.Default()
 	r.POST("/search", searchAudioTimestampsPOST)
-	//r.GET("/status", statusGET)
+	r.GET("/status", statusGET)
 	r.GET("/load", loadFileGET)
 	r.GET("/check", checkFileGET)
 	r.Run()
@@ -167,11 +168,21 @@ func findWordTimestamp(wordToFind string, audioContent *speechpb.SpeechRecogniti
 	return results
 }
 
-/*
+
 func statusGET(c *gin.Context) {
-	operationName := c.Request.Header["Operationname"][0]
-	client := getNewSpeechClient()
-	resp, err := pollOperation(client, operationName)
+	workerId := c.Request.Header["Workerid"][0]
+
+	reqWorker := workerMap[workerId]
+
+	finished := reqWorker.IsFinished()
+
+	resp := response.Response{
+		TimeStamps: []int64{},
+		Message: strconv.FormatBool(finished),
+		Response: nil,
+		Index: -1,
+		WorkerId: reqWorker.Id(),
+	}
 
 	respJson, err := json.Marshal(resp)
 
@@ -180,6 +191,4 @@ func statusGET(c *gin.Context) {
 	}
 
 	c.String(200, string(respJson))
-
-	client.Close()
-}*/
+}
