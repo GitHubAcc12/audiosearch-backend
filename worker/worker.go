@@ -24,29 +24,28 @@ import(
 
 type Worker struct {
 	id				string
-	operations		[]string
-	responses		[]response.Response
+	Responses		[]*response.Response
 	FileUri			string	// Name of the file without extension
 	FileUrl			string	// Where to download the file
 	wavFilePath		string
 }
 
-func NewWorker(uri string, url string) Worker {
-	return Worker{
+func NewWorker(uri string, url string) *Worker {
+	return &Worker{
 		id: uuid.NewString(),
-		operations: []string{},
-		responses: []response.Response{},
+		Responses: make([]*response.Response, 0),
 		FileUri: uri,
 		FileUrl: url,
 		wavFilePath: "",
 	}
 }
 
-func (w Worker) IsFinished() bool {
-	return len(w.responses) > 0
+func (w *Worker) IsFinished() bool {
+	log.Print(len(w.Responses))
+	return len(w.Responses) > 0
 }
 
-func (w Worker) downloadFile(filePath string) {
+func (w *Worker) downloadFile(filePath string) {
 	resp, err := http.Get(w.FileUrl)
 	
 	if err != nil {
@@ -70,22 +69,22 @@ func (w Worker) downloadFile(filePath string) {
 	}
 }
 
-func (w Worker) DownloadAndExtractAudioConcurrent(vidFilePath string, audFilePath string) string {
+func (w *Worker) DownloadAndExtractAudioConcurrent(vidFilePath string, audFilePath string) string {
 	go w.downloadAndExtractAudio(vidFilePath, audFilePath)
 	return w.id
 }
 
-func (w Worker) Id() string {
+func (w *Worker) Id() string {
 	return w.id
 }
 
-func (w Worker) downloadAndExtractAudio(vFile string, aFile string) {
+func (w *Worker) downloadAndExtractAudio(vFile string, aFile string) {
 	log.Print("Will download into: " + vFile + " and " + aFile)
 	w.downloadFile(vFile)
 	w.splitFile(vFile, aFile)
 }
 
-func (w Worker) splitFile(inputFilePath string, outputFilePath string) {
+func (w *Worker) splitFile(inputFilePath string, outputFilePath string) {
 	cmd := tools.GetCommandAudioFromVideofile(inputFilePath, outputFilePath)
 	err := cmd.Run()
 
@@ -108,19 +107,19 @@ func (w Worker) splitFile(inputFilePath string, outputFilePath string) {
 	}
 }
 
-func (w Worker) createDirectory(tmpFilePath string) (string, error) {
+func (w *Worker) createDirectory(tmpFilePath string) (string, error) {
 	outFilePath := filepath.FromSlash(tmpFilePath)
 	return outFilePath, os.MkdirAll(outFilePath, os.ModePerm)
 }
 
-func (w Worker) DeleteBigFiles() (error, error) {
+func (w *Worker) DeleteBigFiles() (error, error) {
 	err := os.Remove(w.wavFilePath)
 	err2 := os.Remove(strings.TrimSuffix(w.wavFilePath, ".wav")+".mp4")
 
 	return err, err2
 }
 
-func (w Worker) getNewSpeechClient(ctx context.Context) *speech.Client {
+func (w *Worker) getNewSpeechClient(ctx context.Context) *speech.Client {
 	client, err := speech.NewClient(ctx)
 	if err != nil {
 		log.Fatal(err)
@@ -128,7 +127,7 @@ func (w Worker) getNewSpeechClient(ctx context.Context) *speech.Client {
 	return client
 }
 
-func (w Worker) sendSingleApiRequest(ctx context.Context, client *speech.Client, filePath string) (*speechpb.RecognizeResponse, error){
+func (w *Worker) sendSingleApiRequest(ctx context.Context, client *speech.Client, filePath string) (*speechpb.RecognizeResponse, error){
 	data, err := ioutil.ReadFile(filePath)
 	if err != nil {
 		return nil, err
@@ -151,12 +150,12 @@ func (w Worker) sendSingleApiRequest(ctx context.Context, client *speech.Client,
 	// returns response, error
 }
 
-func (w Worker) AnalyzeFiles(ctx context.Context, splitFilesFolder string) string {
+func (w *Worker) AnalyzeFiles(ctx context.Context, splitFilesFolder string) string {
 	go w.analyzeFilesConcurrently(ctx, splitFilesFolder)
 	return w.id
 }
 
-func (w Worker) analyzeFilesConcurrently(ctx context.Context, splitFilesFolder string) {
+func (w *Worker) analyzeFilesConcurrently(ctx context.Context, splitFilesFolder string) {
 	log.Print("Splitfiledfolder: " + splitFilesFolder)
 	files, err := ioutil.ReadDir(splitFilesFolder)
 
@@ -167,7 +166,7 @@ func (w Worker) analyzeFilesConcurrently(ctx context.Context, splitFilesFolder s
 	client := w.getNewSpeechClient(ctx)
 
 	var waitGroup sync.WaitGroup
-	operationResults := make(chan response.Response, len(files))
+	operationResults := make(chan *response.Response, len(files))
 	log.Print("In Worker: starting loop")
 	for _, f := range files {
 		log.Print("Iteration " + f.Name())
@@ -193,10 +192,10 @@ func (w Worker) analyzeFilesConcurrently(ctx context.Context, splitFilesFolder s
 			resp := response.Response{
 				TimeStamps: []int64{},
 				Message: "",
-				Response: result,
-				Index: fileIndex,
+				GoogleResponse: result,
+				Index: int64(fileIndex),
 			}
-			operationResults <- resp
+			operationResults <- &resp
 			log.Print("Done with routine " + fileUri)
 		}(ctx, client, filepath.FromSlash(splitFilesFolder + "/" + f.Name()))
 	}
@@ -207,6 +206,28 @@ func (w Worker) analyzeFilesConcurrently(ctx context.Context, splitFilesFolder s
 	log.Print("Waitgroup finished and Channel closed!")
 	client.Close()
 
-	w.responses = tools.ToSlice(operationResults)
+	w.Responses = tools.ToSlice(operationResults)
+	log.Print(len(w.Responses))
+}
+
+func (w *Worker) findWordTimestampsInResponses(word string) {
+	var waitGroup sync.WaitGroup
+	for _, resp := range w.Responses {
+		waitGroup.Add(1)
+		go func(word string) {
+			defer waitGroup.Done()
+			resp.FindWordTimestamps(word)
+		}(word)
+	}
+	waitGroup.Wait()
+}
+
+func (w *Worker) FindWordTimestamps(word string) []int64 {
+	w.findWordTimestampsInResponses(word)
+	tStamps := make([]int64, 0)
+	for _, resp := range w.Responses {
+		tStamps = append(tStamps, resp.TimeStamps...)
+	}
+	return tStamps
 }
 

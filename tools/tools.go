@@ -2,12 +2,14 @@ package tools
 
 import(
 	"os/exec"
+	"strconv"
 
 	"backend/response"
+	"backend/constants"
 )
 
-func ToSlice(c chan response.Response) []response.Response {
-	s := make([]response.Response, 0)
+func ToSlice(c chan *response.Response) []*response.Response {
+	s := make([]*response.Response, 0)
 	for i := range c {
 		s = append(s, i)
 	}
@@ -31,7 +33,7 @@ func GetCommandSplitAudio(inputFile string, outputPath string) *exec.Cmd {
 	return  exec.Command("ffmpeg",
 	"-i", inputFile,
 	"-f", "segment",
-	"-segment_time", "55",
+	"-segment_time", strconv.Itoa(constants.AUDIO_SEGMENT_LENGTH_SECONDS),
 	"-c", "copy",
 	outputPath+"%03d.wav")
 }

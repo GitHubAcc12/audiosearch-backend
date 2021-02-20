@@ -5,7 +5,7 @@ import (
 	"context"
 	"log"
 	"os"
-	"strings"
+	//"strings"
 	"strconv"
 	"encoding/json"
 	"path/filepath"
@@ -14,25 +14,59 @@ import (
 	"backend/constants"
 	"backend/worker"
 
-	speechpb "google.golang.org/genproto/googleapis/cloud/speech/v1"
+	//speechpb "google.golang.org/genproto/googleapis/cloud/speech/v1"
 )
 
-var workerMap map[string]worker.Worker
+var workerMap map[string]*worker.Worker
 
 func main () {
-	workerMap = make(map[string]worker.Worker)
+	workerMap = make(map[string]*worker.Worker)
 	// TODO workers will have to be deleted eventually
 	r := gin.Default()
 	r.POST("/search", searchAudioTimestampsPOST)
 	r.GET("/status", statusGET)
 	r.GET("/load", loadFileGET)
 	r.GET("/check", checkFileGET)
+	r.GET("/find", findWordGET)
 	r.Run()
+}
+
+func findWordGET(c *gin.Context) {
+	workerId := c.Request.Header["Workerid"][0]
+	
+	resp := response.Response{
+		TimeStamps: []int64{},
+		Message: "",
+		GoogleResponse: nil,
+		Index: int64(-1),
+		WorkerId: workerId,
+	}
+	reqWorker := workerMap[workerId]
+
+	if c.Request.Header["Word"] == nil {
+		resp.Message = "No word submitted!"
+	} else {
+		wordToFind := c.Request.Header["Word"][0]
+		log.Print("In find: " + strconv.Itoa(len(reqWorker.Responses)))
+		debugArr := reqWorker.FindWordTimestamps(wordToFind)
+		log.Print(len(debugArr))
+		resp.TimeStamps = debugArr
+		log.Print("resp.Timestamps: " + strconv.Itoa(len(resp.TimeStamps)))
+	}
+
+	jsonResp, err := json.Marshal(resp)
+	
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	//workerMap[reqWorker.Id()] = reqWorker
+	c.String(200, string(jsonResp))
 }
 
 func loadFileGET(c *gin.Context) {
 
-	var reqWorker worker.Worker
+	var reqWorker *worker.Worker
 	if c.Request.Header["Workerid"] == nil {
 		fileUrl := c.Request.Header["Url"][0]
 		fileUri := c.Request.Header["Uri"][0]
@@ -53,9 +87,9 @@ func loadFileGET(c *gin.Context) {
 
 	resultToSend := response.Response{
 		TimeStamps: []int64{},
-		Response: nil,
+		GoogleResponse: nil,
 		Message: "Download initiated",
-		Index: -1,
+		Index: int64(-1),
 		WorkerId: reqWorker.Id(),
 	}
 
@@ -65,6 +99,7 @@ func loadFileGET(c *gin.Context) {
 		log.Fatal(err)
 	}
 
+	//workerMap[reqWorker.Id()] = reqWorker
 	c.String(200, string(jsonResult))
 }
 
@@ -83,8 +118,8 @@ func checkFileGET(c *gin.Context) {
 	resp := response.Response{
 		TimeStamps: []int64{},
 		Message: status,
-		Response: nil,
-		Index: -1,
+		GoogleResponse: nil,
+		Index: int64(-1),
 		WorkerId: "", // Getting there
 	}
 
@@ -101,14 +136,14 @@ func searchAudioTimestampsPOST(c *gin.Context) {
 	var request response.REQUEST
 	c.BindJSON(&request)
 
-	var reqWorker worker.Worker
+	var reqWorker *worker.Worker
 
 	if len(request.WORKER_ID) == 0 {
 		resp := response.Response{
 			TimeStamps: []int64{},
-			Response: nil,
+			GoogleResponse: nil,
 			Message: "Operation failed: No video/audio associated",
-			Index: -1,
+			Index: int64(-1),
 			WorkerId: "",
 		}
 
@@ -141,8 +176,8 @@ func searchAudioTimestampsPOST(c *gin.Context) {
 	resultToSend := response.Response{
 		TimeStamps: []int64{},
 		Message: "Speech evaluation initiated",
-		Response: nil,
-		Index: -1,
+		GoogleResponse: nil,
+		Index: int64(-1),
 		WorkerId: reqWorker.Id(),
 	}
 
@@ -152,11 +187,13 @@ func searchAudioTimestampsPOST(c *gin.Context) {
 		log.Fatal(err)
 	}
 
+	log.Print("In main: " + strconv.Itoa(len(reqWorker.Responses)))
+	//workerMap[reqWorker.Id()] = reqWorker
 	c.String(200, string(jsonResult))
 }
 
 
-
+/*
 func findWordTimestamp(wordToFind string, audioContent *speechpb.SpeechRecognitionAlternative) []int64 {
 	results := make([]int64, 0)
 	// Think of smart way to reduce words here
@@ -166,21 +203,23 @@ func findWordTimestamp(wordToFind string, audioContent *speechpb.SpeechRecogniti
 		}
 	}
 	return results
-}
+}*/
 
 
 func statusGET(c *gin.Context) {
 	workerId := c.Request.Header["Workerid"][0]
 
 	reqWorker := workerMap[workerId]
+	
+	log.Print("In status: " + strconv.Itoa(len(reqWorker.Responses)))
 
 	finished := reqWorker.IsFinished()
 
 	resp := response.Response{
 		TimeStamps: []int64{},
 		Message: strconv.FormatBool(finished),
-		Response: nil,
-		Index: -1,
+		GoogleResponse: nil,
+		Index: int64(-1),
 		WorkerId: reqWorker.Id(),
 	}
 
@@ -189,6 +228,6 @@ func statusGET(c *gin.Context) {
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	//workerMap[reqWorker.Id()] = reqWorker
 	c.String(200, string(respJson))
 }
