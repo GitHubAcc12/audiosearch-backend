@@ -2,7 +2,6 @@ package worker
 
 import(
 	"net/http"
-	"os/exec"
 	"os"
 	"io"
 	"path/filepath"
@@ -87,7 +86,7 @@ func (w Worker) downloadAndExtractAudio(vFile string, aFile string) {
 }
 
 func (w Worker) splitFile(inputFilePath string, outputFilePath string) {
-	cmd := getCommandAudioFromVideofile(inputFilePath, outputFilePath)
+	cmd := tools.GetCommandAudioFromVideofile(inputFilePath, outputFilePath)
 	err := cmd.Run()
 
 	if err != nil {
@@ -100,7 +99,7 @@ func (w Worker) splitFile(inputFilePath string, outputFilePath string) {
 
 	w.createDirectory(filePathSplitFile)
 
-	cmd = getCommandSplitAudio(outputFilePath, filePathSplitFile)
+	cmd = tools.GetCommandSplitAudio(outputFilePath, filePathSplitFile)
 	err = cmd.Run()
 
 	if err != nil {
@@ -211,24 +210,3 @@ func (w Worker) analyzeFilesConcurrently(ctx context.Context, splitFilesFolder s
 	w.responses = tools.ToSlice(operationResults)
 }
 
-
-func getCommandAudioFromVideofile(inputFile string, outputFile string) *exec.Cmd{
-	// ffmpeg -i {video_name} -ab 160k -ac 2 -ar 44100 -vn audio.wav
-	return exec.Command("ffmpeg",
-	"-i", inputFile,
-	"-ab", "160k",
-	"-ac", "2",
-	"-ar", "44100",
-	"-vn", outputFile)
-}
-
-func getCommandSplitAudio(inputFile string, outputPath string) *exec.Cmd {
-	// ffmpeg -i precalcday1.wav -f segment -segment_time 600 -c copy out%03d.wav
-	// Segment audio file into 5 minute long pieces
-	return  exec.Command("ffmpeg",
-	"-i", inputFile,
-	"-f", "segment",
-	"-segment_time", "55",
-	"-c", "copy",
-	outputPath+"%03d.wav")
-}

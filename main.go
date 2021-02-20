@@ -3,26 +3,16 @@ package main
 import (
 	"github.com/gin-gonic/gin"
 	"context"
-	//"fmt"
-	//"io"
-	//"io/ioutil"
 	"log"
 	"os"
-	//"os/exec"
 	"strings"
 	"encoding/json"
-	//"net/http"
-	//"sync"
-	//"strconv"
 	"path/filepath"
 
 	"backend/response"
 	"backend/constants"
-	//"backend/tools"
 	"backend/worker"
 
-	// uuid "github.com/google/uuid"
-	//speech "cloud.google.com/go/speech/apiv1"
 	speechpb "google.golang.org/genproto/googleapis/cloud/speech/v1"
 )
 
@@ -38,60 +28,6 @@ func main () {
 	r.GET("/check", checkFileGET)
 	r.Run()
 }
-
-
-/*
-func arrayToString(a []int64, delim string) string {
-    return strings.Trim(strings.Replace(fmt.Sprint(a), " ", delim, -1), "[]")
-}
-
-
-
-func downloadFile(fileUrl string, filePath string) {
-	resp, err := http.Get(fileUrl)
-	
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer resp.Body.Close()
-
-	out, err := os.Create(filePath)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer out.Close()
-
-	_, err = io.Copy(out, resp.Body)
-
-	if err != nil {
-		log.Fatal(err)
-	}
-}
-
-func getNewSpeechClient() *speech.Client {
-	// Create google cloud client
-	ctx := context.Background()
-	client, err := speech.NewClient(ctx)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return client
-}
-
-func loadFileAndExtractAudio(fileUrl string, vidFileName string, audFileName string) {
-	log.Print("Starting to download file " + vidFileName)
-	downloadFile(fileUrl, vidFileName)
-	log.Print("Download finished.")
-	cmd := getCommandAudioFromVideofile(filepath.FromSlash(vidFileName), filepath.FromSlash(audFileName))
-	err := cmd.Run()
-	if err != nil {
-		log.Print("Error converting to wav file:")
-		log.Fatal(err)
-	}
-}*/
 
 func loadFileGET(c *gin.Context) {
 
@@ -110,11 +46,6 @@ func loadFileGET(c *gin.Context) {
 	
 	vidFileLocation := filepath.FromSlash("./"+constants.FILES_FOLDER_PATH + reqWorker.FileUri + ".mp4")
 	audFileLocation := filepath.FromSlash("./"+constants.FILES_FOLDER_PATH + reqWorker.FileUri + ".wav")
-
-	/*
-	go loadFileAndExtractAudio(fileUrl, vidFileLocation, audFileLocation)
-
-	*/
 
 	reqWorker.DownloadAndExtractAudioConcurrent(vidFileLocation, audFileLocation)
 
@@ -205,92 +136,6 @@ func searchAudioTimestampsPOST(c *gin.Context) {
 	splitFilePath := filepath.FromSlash("./"+constants.FILES_FOLDER_PATH+reqWorker.FileUri)
 	reqWorker.AnalyzeFiles(context.Background(), splitFilePath)
 
-	/*
-	err := os.MkdirAll("./"+constants.FILES_FOLDER_PATH+request.URI, os.ModePerm)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	
-	fileUri := "./"+constants.FILES_FOLDER_PATH + request.URI + ".wav"
-
-	outputFilePath := "./"+constants.FILES_FOLDER_PATH+request.URI+"/"
-
-	// Split file into 5 minute sequences
-	cmd := getCommandSplitAudio(strings.TrimSuffix(fileUri, ".wav"), outputFilePath)
-	cmd.Run()
-
-	
-	// Delete big file after small files obtained
-	err = os.Remove(fileUri)
-	err2 := os.Remove(strings.TrimSuffix(fileUri, ".wav")+".mp4")
-
-	if err != nil || err2 != nil{
-		log.Fatal(err)
-		log.Fatal(err2)
-	}
-
-
-	files, err := ioutil.ReadDir(filepath.FromSlash("./"+constants.FILES_FOLDER_PATH+request.URI))
-
-	if err != nil {
-		log.Fatal(err)
-	}
-	client := getNewSpeechClient()
-
-	var waitGroup sync.WaitGroup
-
-	operationResults := make(chan response.Response, len(files)) 
-
-	log.Print("Starting loop")
-	for _, f := range files {
-		log.Print("Iteration: " + f.Name())
-		// Save index of file to later add index*5min, or index*300 to the word timestamps
-		fName := strings.TrimSuffix(f.Name(), ".wav")
-		fileIndex, err := strconv.Atoi(fName)
-		
-		if err != nil {
-			log.Fatal(err)
-		}
-		// Start goroutines to send all the requests to cloud api
-		waitGroup.Add(1)
-		go func(client *speech.Client, fileUri string) {
-			defer waitGroup.Done()
-			// Do I need a new client every time to make it fast?
-			log.Print("In goroutine! Fileuri: " + fileUri)
-			_, err := sendLongRunningRequest(os.Stdout, client, fileUri) // Getting there!!!
-			if err != nil {
-				log.Fatal(err)
-			}
-			log.Print("Received response from google!")
-			// Save names of the operations to check on them later
-			resp := response.Response{
-				TimeStamps: []int64{},
-				Message: "",
-				Response: nil, // Getting there
-				Index: fileIndex,
-			}
-			operationResults <- resp
-			log.Print("Done with routine " + fileUri)
-		}(client, filepath.FromSlash("./"+constants.FILES_FOLDER_PATH+request.URI + "/" + f.Name()))
-	}
-
-	log.Print("Waiting for waitgroup")
-	
-	waitGroup.Wait() // Wait for all goroutines to finish
-	close(operationResults)
-	log.Print("Waitgroup finished!")
-	client.Close()
-
-	resArray := tools.ToSlice(operationResults)
-	log.Print("Created array")
-
-	/*result, err := sendLongRunningRequest(os.Stdout, client, fileUri)
-
-	if err != nil {
-		log.Print("Error from sendlongrunningrequest")
-		log.Fatal(err)
-	} */
 
 	resultToSend := response.Response{
 		TimeStamps: []int64{},
@@ -337,39 +182,4 @@ func statusGET(c *gin.Context) {
 	c.String(200, string(respJson))
 
 	client.Close()
-}
-
-
-
-func pollOperation(client *speech.Client, operationName string) (*speechpb.LongRunningRecognizeResponse, error) {
-	ctx := context.Background()
-	op := client.LongRunningRecognizeOperation(operationName)
-	resp, err := op.Poll(ctx)
-	return resp, err
-}
-
-func sendLongRunningRequest(w io.Writer, client *speech.Client, filename string) (*speech.LongRunningRecognizeOperation, error) {
-	ctx := context.Background()
-	data, err := ioutil.ReadFile(filename)
-	if err != nil {
-		return nil, err
-	}
-
-	req := &speechpb.LongRunningRecognizeRequest {
-		Config: &speechpb.RecognitionConfig {
-			Encoding:			speechpb.RecognitionConfig_LINEAR16,
-			SampleRateHertz:	44100,
-			LanguageCode:		"en-US",
-			AudioChannelCount:	2,
-			EnableWordTimeOffsets: true,
-		},
-		Audio: &speechpb.RecognitionAudio {
-			AudioSource: &speechpb.RecognitionAudio_Content{Content: data},
-		},
-	}
-
-	op, err := client.LongRunningRecognize(ctx, req)
-
-	return op, err
-
 }*/
