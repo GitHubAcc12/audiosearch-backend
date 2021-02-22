@@ -41,7 +41,6 @@ func NewWorker(uri string, url string) *Worker {
 }
 
 func (w *Worker) IsFinished() bool {
-	log.Print(len(w.Responses))
 	return len(w.Responses) > 0
 }
 
@@ -156,7 +155,6 @@ func (w *Worker) AnalyzeFiles(ctx context.Context, splitFilesFolder string) stri
 }
 
 func (w *Worker) analyzeFilesConcurrently(ctx context.Context, splitFilesFolder string) {
-	log.Print("Splitfiledfolder: " + splitFilesFolder)
 	files, err := ioutil.ReadDir(splitFilesFolder)
 
 	if err != nil {
@@ -167,7 +165,6 @@ func (w *Worker) analyzeFilesConcurrently(ctx context.Context, splitFilesFolder 
 
 	var waitGroup sync.WaitGroup
 	operationResults := make(chan response.Response, len(files))
-	log.Print("In Worker: starting loop")
 	for _, f := range files {
 		log.Print("Iteration " + f.Name())
 		fName := strings.TrimSuffix(f.Name(), ".wav")
@@ -182,17 +179,11 @@ func (w *Worker) analyzeFilesConcurrently(ctx context.Context, splitFilesFolder 
 		go func(ctx context.Context, client *speech.Client, fileUri string) {
 			defer waitGroup.Done()
 
-			log.Print("In worker goroutine! Fileuri: " + fileUri)
 			result, err := w.sendSingleApiRequest(ctx, client, fileUri)
 			if err != nil {
 				log.Print("Error in goroutine:")
 				log.Fatal(err)
 			}
-			if len(result.Results) > 0 {
-				log.Print(result.Results[0].Alternatives[0].Transcript)
-			}
-			
-			//log.Print("Received response")
 			resp := response.Response{
 				TimeStamps: []int64{},
 				Message: "",
@@ -205,43 +196,30 @@ func (w *Worker) analyzeFilesConcurrently(ctx context.Context, splitFilesFolder 
 	}
 
 	waitGroup.Wait()
-
 	close(operationResults)
-	// TODO are the right things in here?
+
 	log.Print("Waitgroup finished and Channel closed!")
 	client.Close()
 
 	w.Responses = tools.ToSlice(operationResults)
 
-
-	// TODO this is where it fails. Why???
-	log.Print("REsponse iteration double triple safe:")
-	for _, r := range w.Responses {
-		if len(r.GoogleResponse.Results) > 0 {
-			log.Print(r.GoogleResponse.Results[0].Alternatives[0].Transcript)
-		}
-		
-	}
 }
 
 func (w *Worker) findWordTimestampsInResponses(word string) {
 	var waitGroup sync.WaitGroup
 	operationResults := make(chan response.Response, len(w.Responses))
 	for _, resp := range w.Responses {
-		log.Print("Outside of loop Response: " + strconv.FormatInt(resp.Index, 10))
 		waitGroup.Add(1)
 		go func(iResp response.Response) {
 			defer waitGroup.Done()
-			log.Print("Response: " + strconv.FormatInt(iResp.Index, 10))
 			iResp.FindWordTimestamps(word)
 			operationResults <- iResp
 		}(resp)
 	}
 	waitGroup.Wait()
 	close(operationResults)
-	log.Print("Waitgroup find closed!")
+
 	w.Responses = tools.ToSlice(operationResults)
-	log.Print("Waitgroup find closed and array assigned!")
 }
 
 func (w *Worker) FindWordTimestamps(word string) []int64 {

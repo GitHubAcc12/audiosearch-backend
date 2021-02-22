@@ -3,28 +3,15 @@ package tools
 import(
 	"os/exec"
 	"strconv"
-	"log"
 
 	"backend/response"
 	"backend/constants"
 )
 
 func ToSlice(c chan response.Response) []response.Response {
-	log.Print("In toslice")
 	s := make([]response.Response, 0)
 	for i := range c {
-		if len(i.GoogleResponse.Results) > 0 {
-			log.Print(i.GoogleResponse.Results[0].Alternatives[0].Transcript)
-		}
-		
 		s = append(s, i)
-	}
-	log.Print("Toslice triple safe")
-	for _, r := range s {
-		if len(r.GoogleResponse.Results) > 0 {
-			log.Print(r.GoogleResponse.Results[0].Alternatives[0].Transcript)
-		}
-		
 	}
 	return s
 }

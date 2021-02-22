@@ -5,7 +5,6 @@ import (
 	"context"
 	"log"
 	"os"
-	//"strings"
 	"strconv"
 	"encoding/json"
 	"path/filepath"
@@ -13,8 +12,6 @@ import (
 	"backend/response"
 	"backend/constants"
 	"backend/worker"
-
-	//speechpb "google.golang.org/genproto/googleapis/cloud/speech/v1"
 )
 
 var workerMap map[string]*worker.Worker
@@ -47,11 +44,7 @@ func findWordGET(c *gin.Context) {
 		resp.Message = "No word submitted!"
 	} else {
 		wordToFind := c.Request.Header["Word"][0]
-		log.Print("In find: " + strconv.Itoa(len(reqWorker.Responses)))
-		debugArr := reqWorker.FindWordTimestamps(wordToFind)
-		log.Print(len(debugArr))
-		resp.TimeStamps = debugArr
-		log.Print("resp.Timestamps: " + strconv.Itoa(len(resp.TimeStamps)))
+		resp.TimeStamps = reqWorker.FindWordTimestamps(wordToFind)
 	}
 
 	jsonResp, err := json.Marshal(resp)
@@ -186,32 +179,16 @@ func searchAudioTimestampsPOST(c *gin.Context) {
 	if err != nil {
 		log.Fatal(err)
 	}
-
-	log.Print("In main: " + strconv.Itoa(len(reqWorker.Responses)))
-	//workerMap[reqWorker.Id()] = reqWorker
+	
 	c.String(200, string(jsonResult))
 }
 
-
-/*
-func findWordTimestamp(wordToFind string, audioContent *speechpb.SpeechRecognitionAlternative) []int64 {
-	results := make([]int64, 0)
-	// Think of smart way to reduce words here
-	for _, word := range audioContent.Words {
-		if strings.Contains(word.Word, wordToFind) {
-			results = append(results, word.StartTime.Seconds)
-		}
-	}
-	return results
-}*/
 
 
 func statusGET(c *gin.Context) {
 	workerId := c.Request.Header["Workerid"][0]
 
 	reqWorker := workerMap[workerId]
-	
-	log.Print("In status: " + strconv.Itoa(len(reqWorker.Responses)))
 
 	finished := reqWorker.IsFinished()
 
