@@ -12,6 +12,7 @@ import (
 	"backend/response"
 	"backend/constants"
 	"backend/worker"
+	"backend/tools"
 )
 
 var workerMap map[string]*worker.Worker
@@ -28,6 +29,13 @@ func main () {
 	r.Run()
 }
 
+func deleteWorker(id string) {
+	_, ok := workerMap[id]
+	if ok {
+		delete(workerMap, id)
+	}
+}
+
 func findWordGET(c *gin.Context) {
 	workerId := c.Request.Header["Workerid"][0]
 	
@@ -38,7 +46,14 @@ func findWordGET(c *gin.Context) {
 		Index: int64(-1),
 		WorkerId: workerId,
 	}
-	reqWorker := workerMap[workerId]
+	reqWorker, ok := workerMap[workerId]
+	if !ok {
+		log.Print("Unknown WorkerID submitted!")
+		errRes := tools.WorkerDoesntExistResponse()
+		c.String(200, errRes)
+		return
+	}
+	
 
 	if c.Request.Header["Word"] == nil {
 		resp.Message = "No word submitted!"
@@ -53,7 +68,6 @@ func findWordGET(c *gin.Context) {
 		log.Fatal(err)
 	}
 
-	//workerMap[reqWorker.Id()] = reqWorker
 	c.String(200, string(jsonResp))
 }
 
@@ -66,7 +80,14 @@ func loadFileGET(c *gin.Context) {
 		reqWorker = worker.NewWorker(fileUri, fileUrl)
 		workerMap[reqWorker.Id()] = reqWorker
 	} else {
-		reqWorker = workerMap[c.Request.Header["Workerid"][0]]
+		var ok bool
+		reqWorker, ok = workerMap[c.Request.Header["Workerid"][0]]
+		if !ok {
+			log.Print("Unknown WorkerID submitted!")
+			errRes := tools.WorkerDoesntExistResponse()
+			c.String(200, errRes)
+			return
+		}
 	}
 	
 	log.Print("Worker Uri after creation: " + reqWorker.FileUri)
@@ -148,7 +169,14 @@ func searchAudioTimestampsPOST(c *gin.Context) {
 		c.String(404, string(jsonResp))
 		return
 	} else {
-		reqWorker = workerMap[request.WORKER_ID]
+		var ok bool
+		reqWorker, ok = workerMap[request.WORKER_ID]
+		if !ok {
+			log.Print("Unknown WorkerID submitted!")
+			errRes := tools.WorkerDoesntExistResponse()
+			c.String(200, errRes)
+			return
+		}
 	}
 
 	err1, err2 := reqWorker.DeleteBigFiles()
@@ -188,7 +216,15 @@ func searchAudioTimestampsPOST(c *gin.Context) {
 func statusGET(c *gin.Context) {
 	workerId := c.Request.Header["Workerid"][0]
 
-	reqWorker := workerMap[workerId]
+	reqWorker, ok := workerMap[workerId]
+	if !ok {
+		log.Print("Unknown WorkerID submitted!")
+		errRes := tools.WorkerDoesntExistResponse()
+	
+		//workerMap[reqWorker.Id()] = reqWorker
+		c.String(200, errRes)
+		return
+	}
 
 	finished := reqWorker.IsFinished()
 

@@ -1,8 +1,11 @@
 package tools
 
-import(
+import (
+	"os"
 	"os/exec"
 	"strconv"
+	"encoding/json"
+	"log"
 
 	"backend/response"
 	"backend/constants"
@@ -14,6 +17,27 @@ func ToSlice(c chan response.Response) []response.Response {
 		s = append(s, i)
 	}
 	return s
+}
+
+func WorkerDoesntExistResponse() string {
+	resp := response.Response{
+		TimeStamps: []int64{},
+		Message: "Unknown WorkerID submitted",
+		GoogleResponse: nil,
+		Index: int64(-1),
+		WorkerId: "", // Getting there
+	}
+	jsonResult, err := json.Marshal(resp)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return string(jsonResult)
+}
+
+func RemoveContents(dir string) error {
+	return os.RemoveAll(dir)
 }
 
 

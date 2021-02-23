@@ -201,6 +201,8 @@ func (w *Worker) analyzeFilesConcurrently(ctx context.Context, splitFilesFolder 
 	log.Print("Waitgroup finished and Channel closed!")
 	client.Close()
 
+	tools.RemoveContents(splitFilesFolder)
+
 	w.Responses = tools.ToSlice(operationResults)
 
 }
